@@ -1,0 +1,78 @@
+name: Update the StatsDirect cask
+
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+    inputs:
+      verify_current:
+        description: Recheck the signed archive even if the cask is current
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-statsdirect-cask
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      sha256: ${{ steps.release.outputs.sha256 }}
+      url: ${{ steps.release.outputs.url }}
+      update: ${{ steps.release.outputs.update }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Check the current stable release
+        id: release
+        run: python3 scripts/update-cask.py
+
+  verify:
+    needs: discover
+    if: needs.discover.outputs.update == 'true' || (inputs.verify_current && needs.discover.outputs.version != '')
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Verify the release on macOS
+        env:
+          VERSION: ${{ needs.discover.outputs.version }}
+          SHA256: ${{ needs.discover.outputs.sha256 }}
+          RELEASE_URL: ${{ needs.discover.outputs.url }}
+        run: bash scripts/verify-mac-release.sh "$VERSION" "$SHA256" "$RELEASE_URL"
+
+  publish:
+    needs: [discover, verify]
+    if: github.repository == 'iain-buchan/homebrew-statsdirect' && github.ref == 'refs/heads/main' && needs.discover.outputs.update == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: main
+      - name: Publish the verified cask
+        env:
+          VERSION: ${{ needs.discover.outputs.version }}
+          SHA256: ${{ needs.discover.outputs.sha256 }}
+        run: |
+          python3 scripts/update-cask.py --apply "$VERSION" "$SHA256"
+          git diff --check
+          if git diff --quiet -- Casks/statsdirect.rb; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- Casks/statsdirect.rb
+          git commit -m "Update StatsDirect to $VERSION"
+          git push origin HEAD:main
