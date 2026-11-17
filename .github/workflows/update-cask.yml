@@ -32,6 +32,8 @@ jobs:
           persist-credentials: false
       - name: Check the current stable release
         id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/update-cask.py
 
   verify:
@@ -63,6 +65,7 @@ jobs:
           ref: main
       - name: Publish the verified cask
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.discover.outputs.version }}
           SHA256: ${{ needs.discover.outputs.sha256 }}
         run: |

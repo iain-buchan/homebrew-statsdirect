@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
@@ -29,13 +30,30 @@ def cask_fields(text):
     return fields
 
 
-def latest_release():
-    request = Request(
-        f"https://api.github.com/repos/{REPOSITORY}/releases/latest",
-        headers={"Accept": "application/vnd.github+json", "User-Agent": "StatsDirect-Homebrew-tap"},
-    )
+def fetch(request):
     with urlopen(request, timeout=30) as response:
+        left, limit = (response.headers.get(f"x-ratelimit-{name}") for name in ("remaining", "limit"))
+        if left and limit:
+            print(f"GitHub allows {limit} requests an hour here; {left} are left.")
         return json.load(response)
+
+
+def latest_release():
+    url = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "StatsDirect-Homebrew-tap"}
+    token = os.getenv("GITHUB_TOKEN")
+    if token:
+        # The workflow's own token has its own allowance. Requests without one share the
+        # runner's address with other projects, and GitHub often refuses them (403).
+        request = Request(url, headers=headers)
+        request.add_unredirected_header("Authorization", f"Bearer {token}")
+        try:
+            return fetch(request)
+        except HTTPError as error:
+            if error.code not in (401, 403):
+                raise
+            print(f"GitHub refused the workflow's token ({error.code}); asking without it.")
+    return fetch(Request(url, headers=headers))
 
 
 def stable_version(release):
