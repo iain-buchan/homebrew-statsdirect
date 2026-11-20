@@ -1,6 +1,6 @@
 cask "statsdirect" do
-  version "1.1.7"
-  sha256 "6851060495da83b7817a3356f43de409d6ee762b476bad621d772d6a4c068766"
+  version "1.1.8"
+  sha256 "fce4262be344e6e9a7af6dc0bc0d0003302fbbbfe668d19be99de9be7e0b2e98"
 
   url "https://github.com/iain-buchan/statsdirect-mac/releases/download/v#{version}/StatsDirect-#{version}-macOS-arm64.zip"
   name "StatsDirect"
